@@ -1,0 +1,11 @@
+{
+  "name": "wox-2026",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "serve . -l tcp://0.0.0.0:$PORT"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  }
+}
