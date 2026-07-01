@@ -237,6 +237,7 @@
 
     document.documentElement.lang = locale;
     syncSwitcher(locale);
+    notify(locale);
 
     if (debug && misses.length) {
       console.warn("[i18n] Untranslated strings (" + misses.length + "):");
@@ -275,6 +276,31 @@
     }
   }
 
+  // ---- Locale pub/sub — lets other widgets (e.g. the chatbot) share this decision ----
+  var _currentLocale = null;
+  var _subs = [];
+  var _readyCbs = [];
+  var _isReady = false;
+
+  function notify(locale) {
+    _currentLocale = locale;
+    for (var i = 0; i < _subs.length; i++) { try { _subs[i](locale); } catch (e) {} }
+  }
+  function markReady(locale) {
+    _currentLocale = locale;
+    if (_isReady) return;
+    _isReady = true;
+    var cbs = _readyCbs; _readyCbs = [];
+    for (var i = 0; i < cbs.length; i++) { try { cbs[i](locale); } catch (e) {} }
+  }
+
+  // Public API consumed by chatbot.js
+  window.WoxI18n = {
+    getLocale: function () { return _currentLocale || "en"; },
+    ready: function (cb) { if (_isReady) cb(_currentLocale || "en"); else _readyCbs.push(cb); },
+    subscribe: function (cb) { _subs.push(cb); }
+  };
+
   // ---- IP country detection with provider fallbacks ----
   function detectCountry() {
     var providers = [
@@ -298,27 +324,28 @@
     var params = new URLSearchParams(location.search);
     var forced = params.get("lang");
 
-    // 1) Manual override via URL wins (great for testing / sharing a language-specific link).
-    //    Not persisted — it's a preview, not a saved preference.
-    if (forced === "es" || forced === "en") { applyLocale(forced); return; }
+    // 1) URL override wins (preview only, not persisted)
+    if (forced === "es" || forced === "en") { applyLocale(forced); markReady(forced); return; }
 
-    // 2) A saved manual choice (from clicking the switch) beats geo, on every visit.
+    // 2) Saved manual choice beats geo, every visit
     var manual = getManual();
-    if (manual === "es" || manual === "en") { applyLocale(manual); return; }
+    if (manual === "es" || manual === "en") { applyLocale(manual); markReady(manual); return; }
 
-    // 3) Geo path. Show cached country instantly (no flash), then refresh in the background.
+    // 3) Geo path — instant cache apply (no flash), then refresh in background
     var cached = null;
     try { cached = localStorage.getItem("wox_country"); } catch (e) {}
     if (cached) { applyLocale(localeForCountry(cached)); }
-    else { syncSwitcher("en"); } // page starts in English until detection resolves
+    else { syncSwitcher("en"); }
 
     detectCountry().then(function (cc) {
-      if (!cc) return;
-      try { localStorage.setItem("wox_country", cc); } catch (e) {}
-      // Only apply the geo result if the user hasn't manually chosen in the meantime.
-      if (!getManual()) applyLocale(localeForCountry(cc));
+      if (cc) { try { localStorage.setItem("wox_country", cc); } catch (e) {} }
+      var manualNow = getManual();
+      var loc = manualNow || (cc ? localeForCountry(cc) : (cached ? localeForCountry(cached) : "en"));
+      if (!manualNow && cc) applyLocale(localeForCountry(cc));
+      markReady(loc); // chatbot initializes here, with the settled locale
     });
   }
+
 
 
   if (document.readyState === "loading") {
