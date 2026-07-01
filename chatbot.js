@@ -1,10 +1,14 @@
 /* =============================================================
    Wideout X — Locale-aware chatbot init
    -------------------------------------------------------------
-   Waits for i18n.js to settle the locale, then boots WoxChat in
-   the matching language. Re-languages on manual switch IF the
-   widget exposes a teardown method; otherwise the persisted
-   choice applies on the next page load.
+   Boots WoxChat in the language i18n.js settles on, and
+   re-languages LIVE when the user flips the nav switch.
+
+   The widget exposes: init, open, close, reset  (no destroy).
+   So we do our own teardown: a MutationObserver records exactly
+   which DOM nodes WoxChat injects during init; on a language
+   switch we remove those nodes, then init again in the new
+   language. No duplicate widgets, no page reload.
    ============================================================= */
 (function () {
   "use strict";
@@ -20,10 +24,10 @@
   };
 
   // Language-specific copy.
-  // NOTE: `message` is the text SENT to your backend when a quick reply is
-  // tapped. These are Spanish so your (LLM-based) bot replies in Spanish.
-  // If any part of your backend routes on exact ENGLISH phrases, keep the
-  // `message` values English and translate only the `label` values.
+  // `message` is what gets SENT to the backend on a quick-reply tap.
+  // The bot is LLM-based (Gemini/OpenAI), so Spanish messages are fine and
+  // it replies in Spanish. If you ever add exact-match English routing,
+  // revert the `message` values to English and keep only `label` translated.
   var COPY = {
     en: {
       title:    'WideOut X Assistant',
@@ -52,6 +56,8 @@
   };
 
   var lastLocale = null;
+  var injected = [];      // top-level nodes WoxChat added
+  var observer = null;
 
   function assign(target) {
     for (var i = 1; i < arguments.length; i++) {
@@ -61,22 +67,55 @@
     return target;
   }
 
+  // Record top-level nodes added to <body>/<head> while `fn` runs (+ a short
+  // window after, to catch deferred insertion). These are the widget's roots.
+  function captureInjected(fn) {
+    var seen = [];
+    if (observer) { try { observer.disconnect(); } catch (e) {} observer = null; }
+    observer = new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var added = muts[i].addedNodes;
+        for (var j = 0; j < added.length; j++) {
+          var n = added[j];
+          if (n.nodeType === 1 && seen.indexOf(n) === -1) seen.push(n);
+        }
+      }
+    });
+    try { observer.observe(document.body, { childList: true }); } catch (e) {}
+    try { observer.observe(document.head, { childList: true }); } catch (e) {}
+
+    try { fn(); } catch (e) {}
+
+    // keep watching briefly for late inserts, then lock in the list
+    setTimeout(function () {
+      if (observer) { try { observer.disconnect(); } catch (e) {} observer = null; }
+      injected = seen;
+    }, 800);
+  }
+
+  function teardown() {
+    if (observer) { try { observer.disconnect(); } catch (e) {} observer = null; }
+    for (var i = 0; i < injected.length; i++) {
+      var n = injected[i];
+      try { if (n && n.parentNode) n.parentNode.removeChild(n); } catch (e) {}
+    }
+    injected = [];
+  }
+
   function initChat(locale) {
     if (!window.WoxChat || typeof WoxChat.init !== "function") return;
     if (locale === lastLocale) return;
 
-    // Re-init (language switch after first load): only if the widget can tear down,
-    // otherwise keep the existing instance to avoid stacking duplicate widgets.
+    // Language switch after first load: remove the old widget DOM first,
+    // then close it if it happens to be open, so we start clean.
     if (lastLocale !== null) {
-      if (typeof WoxChat.destroy === "function") {
-        try { WoxChat.destroy(); } catch (e) {}
-      } else {
-        return; // no safe teardown — persisted choice will apply on next load
-      }
+      if (typeof WoxChat.close === "function") { try { WoxChat.close(); } catch (e) {} }
+      teardown();
     }
 
     var cfg = assign({}, BASE, COPY[locale] || COPY.en);
-    try { WoxChat.init(cfg); lastLocale = locale; } catch (e) {}
+    captureInjected(function () { WoxChat.init(cfg); });
+    lastLocale = locale;
   }
 
   function start(locale) {
@@ -86,7 +125,7 @@
     }
   }
 
-  // Boot once i18n has settled the locale; fall back to English if i18n is absent.
+  // Boot once i18n has settled the locale; fall back to English if absent.
   if (window.WoxI18n && typeof WoxI18n.ready === "function") {
     WoxI18n.ready(start);
   } else {
