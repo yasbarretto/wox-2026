@@ -236,6 +236,7 @@
     }
 
     document.documentElement.lang = locale;
+    syncSwitcher(locale);
 
     if (debug && misses.length) {
       console.warn("[i18n] Untranslated strings (" + misses.length + "):");
@@ -245,6 +246,33 @@
 
   function localeForCountry(cc) {
     return cc && SPANISH_LATAM.has(cc) ? "es" : "en";
+  }
+
+  // ---- Manual preference (a user's switch choice overrides geo, and persists) ----
+  function getManual() {
+    try { return localStorage.getItem("wox_lang"); } catch (e) { return null; }
+  }
+  function setManual(locale) {
+    try { localStorage.setItem("wox_lang", locale); } catch (e) {}
+  }
+
+  // ---- Language switch UI ----
+  function syncSwitcher(locale) {
+    var opts = document.querySelectorAll(".lang-opt");
+    for (var i = 0; i < opts.length; i++) {
+      var on = opts[i].getAttribute("data-lang") === locale;
+      opts[i].setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+  function wireSwitcher() {
+    var opts = document.querySelectorAll(".lang-opt");
+    for (var i = 0; i < opts.length; i++) {
+      opts[i].addEventListener("click", function () {
+        var loc = this.getAttribute("data-lang");
+        setManual(loc);        // remember the choice for next visit
+        applyLocale(loc);      // apply immediately (also syncs the UI)
+      });
+    }
   }
 
   // ---- IP country detection with provider fallbacks ----
@@ -265,24 +293,33 @@
   }
 
   function run() {
+    wireSwitcher();
+
     var params = new URLSearchParams(location.search);
     var forced = params.get("lang");
 
-    // 1) Manual override wins (great for testing from PH)
+    // 1) Manual override via URL wins (great for testing / sharing a language-specific link).
+    //    Not persisted — it's a preview, not a saved preference.
     if (forced === "es" || forced === "en") { applyLocale(forced); return; }
 
-    // 2) Instant apply from cache (no flash on repeat visits)
+    // 2) A saved manual choice (from clicking the switch) beats geo, on every visit.
+    var manual = getManual();
+    if (manual === "es" || manual === "en") { applyLocale(manual); return; }
+
+    // 3) Geo path. Show cached country instantly (no flash), then refresh in the background.
     var cached = null;
     try { cached = localStorage.getItem("wox_country"); } catch (e) {}
-    if (cached) applyLocale(localeForCountry(cached));
+    if (cached) { applyLocale(localeForCountry(cached)); }
+    else { syncSwitcher("en"); } // page starts in English until detection resolves
 
-    // 3) Detect/refresh in the background, then apply + cache
     detectCountry().then(function (cc) {
       if (!cc) return;
       try { localStorage.setItem("wox_country", cc); } catch (e) {}
-      applyLocale(localeForCountry(cc));
+      // Only apply the geo result if the user hasn't manually chosen in the meantime.
+      if (!getManual()) applyLocale(localeForCountry(cc));
     });
   }
+
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", run);
