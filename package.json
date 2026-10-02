@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "build": "node scripts/inject-config.js",
     "start": "serve . -l tcp://0.0.0.0:$PORT"
   },
   "dependencies": {

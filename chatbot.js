@@ -16,8 +16,9 @@
        body   { target:"es", messages:[{id:"0",text:"..."}, ...] }
        return { translations:[{id:"0",text:"..."}, ...] }
    The endpoint / apiToken values below are placeholders. They
-   are substituted at deploy time by .github/workflows/deploy.yml
-   from the CHAT_ENDPOINT / CHAT_API_TOKEN repository secrets.
+   are substituted at build time by scripts/inject-config.js
+   (run via `npm run build` on Railway) from the CHAT_ENDPOINT /
+   CHAT_API_TOKEN env vars set in the Railway service.
    Until substituted (e.g. running locally), a mid-chat switch
    just re-languages the chrome and leaves the transcript as-is
    (non-destructive).
