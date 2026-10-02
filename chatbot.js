@@ -15,16 +15,19 @@
        POST <endpoint>   header: api-token: <token>
        body   { target:"es", messages:[{id:"0",text:"..."}, ...] }
        return { translations:[{id:"0",text:"..."}, ...] }
-   Fill TRANSLATE.endpoint / .apiToken below. Until then, a
-   mid-chat switch just re-languages the chrome and leaves the
-   transcript as-is (non-destructive).
+   The endpoint / apiToken values below are placeholders. They
+   are substituted at deploy time by .github/workflows/deploy.yml
+   from the CHAT_ENDPOINT / CHAT_API_TOKEN repository secrets.
+   Until substituted (e.g. running locally), a mid-chat switch
+   just re-languages the chrome and leaves the transcript as-is
+   (non-destructive).
    ============================================================= */
 (function () {
   "use strict";
 
   var BASE = {
-    endpoint:   'https://apim.workato.com/robertr444/chatbot-v1/chat-api',
-    apiToken:   '93cbc48980e9cae0ee80b8db56a877562b3e138c6acb91ed08d793bc0827f83a',
+    endpoint:   '__CHAT_ENDPOINT__',
+    apiToken:   '__CHAT_API_TOKEN__',
     headerIcon: 'flow',
     footerIcon: 'flow',
     accentColor: '#22d3ee',
@@ -33,8 +36,8 @@
 
   // Live Workato translate endpoint (LLM-backed, returns {translations:[{id,text}]})
   var TRANSLATE = {
-    endpoint: 'https://apim.workato.com/robertr444/chatbot-v1/translate-api',
-    apiToken: '93cbc48980e9cae0ee80b8db56a877562b3e138c6acb91ed08d793bc0827f83a'
+    endpoint:   '__CHAT_ENDPOINT__',
+    apiToken:   '__CHAT_API_TOKEN__',
   };
 
   var COPY = {
@@ -96,7 +99,9 @@
     } catch (e) { return false; }
   }
   function translationConfigured() {
-    return TRANSLATE.endpoint && TRANSLATE.endpoint.indexOf('REPLACE') === -1;
+    return !!TRANSLATE.endpoint &&
+           TRANSLATE.endpoint.indexOf('REPLACE') === -1 &&
+           TRANSLATE.endpoint.indexOf('__CHAT_') === -1;
   }
 
   function setPlaceholder(locale) {
